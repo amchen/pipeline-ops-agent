@@ -1,18 +1,20 @@
 """Command line entry point.
 
-    python -m agent_ops.cli init                 # create warehouse + baseline snapshots
-    python -m agent_ops.cli run                  # run the dbt pipeline and show status
-    python -m agent_ops.cli faults               # list injectable faults
-    python -m agent_ops.cli inject schema_drift  # break the pipeline (resets first with --reset)
-    python -m agent_ops.cli investigate          # run the agents; asks you to approve every action
-    python -m agent_ops.cli reset
+    python3 -m agent_ops.cli init                 # create warehouse + baseline snapshots
+    python3 -m agent_ops.cli run                  # run the dbt pipeline and show status
+    python3 -m agent_ops.cli faults               # list injectable faults
+    python3 -m agent_ops.cli inject schema_drift  # break the pipeline (resets first with --reset)
+    python3 -m agent_ops.cli investigate          # run the agents; asks you to approve every action
+    python3 -m agent_ops.cli investigate --provider groq            # free open-weight model via Groq
+    python3 -m agent_ops.cli models --provider openrouter           # list model ids a provider serves
+    python3 -m agent_ops.cli reset
 """
 from __future__ import annotations
 
 import argparse
 import json
 
-from . import pipeline
+from . import llm, pipeline
 from .approvals import CLIApprover, PolicyApprover
 from .audit import AuditLog
 from .orchestrator import Orchestrator
@@ -31,7 +33,10 @@ def main(argv: list[str] | None = None) -> None:
     p_inj.add_argument("--reset", action="store_true", help="reset to a clean state first")
     p_inv = sub.add_parser("investigate")
     p_inv.add_argument("--auto-approve", choices=["low", "medium", "high"], help="non-interactive: approve up to this risk")
-    p_inv.add_argument("--model", default=None)
+    p_inv.add_argument("--provider", default=None, choices=llm.PROVIDERS, help="default: $LLM_PROVIDER or anthropic")
+    p_inv.add_argument("--model", default=None, help="model id (default depends on provider)")
+    p_mod = sub.add_parser("models", help="list model ids a provider currently serves")
+    p_mod.add_argument("--provider", required=True, choices=[p for p in llm.PROVIDERS if p != "anthropic"])
     args = ap.parse_args(argv)
 
     if args.cmd == "init":
@@ -54,11 +59,14 @@ def main(argv: list[str] | None = None) -> None:
         print(f"Injected: {fault.name} ({fault.description}). Running pipeline...")
         print("Pipeline:", pipeline.run_pipeline()["overall"])
     elif args.cmd == "investigate":
-        import anthropic
-
+        provider, model = llm.resolve(args.model, args.provider)
         approver = PolicyApprover(args.auto_approve) if args.auto_approve else CLIApprover()
-        report = Orchestrator(anthropic.Anthropic(), approver, AuditLog(), model=args.model).investigate()
+        print(f"Provider: {provider}  Model: {model}")
+        report = Orchestrator(llm.make_client(provider), approver, AuditLog(), model=model).investigate()
         print("\n" + report.summary())
+    elif args.cmd == "models":
+        for model_id in llm.make_client(args.provider).list_models():
+            print(model_id)
 
 
 if __name__ == "__main__":

@@ -93,6 +93,8 @@ class AgentLoop:
                 try:
                     if tool is None:
                         raise ToolError(f"Unknown tool '{block.name}'. Available: {sorted(self.tools)}")
+                    if isinstance(block.input, dict) and "_malformed_arguments" in block.input:
+                        raise ToolError("Your tool arguments were not valid JSON. Resend the call with a valid JSON object.")
                     if seen[key] > MAX_IDENTICAL_CALLS:
                         raise ToolError("You have repeated this exact call several times. Change approach or finish.")
                     text = tool.invoke(block.input)

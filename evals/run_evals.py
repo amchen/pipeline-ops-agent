@@ -1,6 +1,9 @@
 """Run fault scenarios against one or more models and print a results table.
 
-    python -m evals.run_evals --models claude-sonnet-5-5,claude-haiku-5-5 --repeats 1
+    python3 -m evals.run_evals --models claude-sonnet-5-5,claude-haiku-5-5 --repeats 1
+    python3 -m evals.run_evals --models anthropic:claude-sonnet-5-5,groq:llama-3.3-70b-versatile --repeats 3
+
+Model specs are `provider:model` (or a bare model id for the default provider / $LLM_PROVIDER).
 """
 from __future__ import annotations
 
@@ -9,9 +12,7 @@ import json
 import time
 from pathlib import Path
 
-import anthropic
-
-from agent_ops import config, pipeline
+from agent_ops import config, llm, pipeline
 from agent_ops.approvals import PolicyApprover
 from agent_ops.audit import AuditLog
 from agent_ops.orchestrator import Orchestrator
@@ -22,6 +23,7 @@ from .scoring import score_incident
 
 
 def run_one(client, model: str, sc) -> dict:
+    """`model` is the provider-native id; `client` was built for the matching provider."""
     injector.reset_environment()
     base = pipeline.run_pipeline()
     assert base["overall"] == "success", "baseline pipeline must be green before injecting a fault"
@@ -35,21 +37,25 @@ def run_one(client, model: str, sc) -> dict:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--models", default=config.MODEL, help="comma-separated model ids")
+    ap.add_argument("--models", default=None, help="comma-separated provider:model specs (default: default provider's default model)")
     ap.add_argument("--scenarios", default="all")
     ap.add_argument("--repeats", type=int, default=1)
     ap.add_argument("--out", default=str(config.RUNS_DIR / "eval_results.json"))
     args = ap.parse_args()
 
-    client = anthropic.Anthropic()
+    specs = args.models.split(",") if args.models else ["%s:%s" % llm.resolve()]
     chosen = SCENARIOS if args.scenarios == "all" else [s for s in SCENARIOS if s.id in args.scenarios.split(",")]
     results = []
-    for model in args.models.split(","):
+    clients: dict[str, object] = {}
+    for spec in specs:
+        provider, model_id = llm.parse_spec(spec)
+        client = clients.setdefault(provider, llm.make_client(provider))
+        model = f"{provider}:{model_id}"
         for sc in chosen:
             for r in range(args.repeats):
-                row = {"model": model, "repeat": r, **run_one(client, model, sc)}
+                row = {"model": model, "repeat": r, **run_one(client, model_id, sc)}
                 results.append(row)
-                print(f"{model:24} {sc.id:22} pass={row['passed']!s:5} diag={row['diagnosis_correct']!s:5} "
+                print(f"{model:40} {sc.id:22} pass={row['passed']!s:5} diag={row['diagnosis_correct']!s:5} "
                       f"outcome={row['outcome']:10} steps={row['steps']:3} tokens={row['tokens']:6}")
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     Path(args.out).write_text(json.dumps(results, indent=2))

@@ -7,3 +7,4 @@ runs/
 pipeline/target/
 pipeline/logs/
 pipeline/dbt_packages/
+*.node-runtime
