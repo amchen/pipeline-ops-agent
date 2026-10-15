@@ -1,0 +1,11 @@
+services:
+  agent:
+    build: .
+    env_file: .env
+    stdin_open: true   # needed for the interactive approval prompt
+    tty: true
+    volumes:
+      - ./runs:/app/runs
+      - warehouse:/app/data
+volumes:
+  warehouse:

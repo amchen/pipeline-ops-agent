@@ -1,0 +1,16 @@
+name: orders_pipeline
+version: "1.0.0"
+config-version: 2
+profile: orders_pipeline
+
+model-paths: ["models"]
+test-paths: ["tests"]
+target-path: "target"
+log-path: "logs"
+
+models:
+  orders_pipeline:
+    staging:
+      +materialized: view
+    marts:
+      +materialized: table

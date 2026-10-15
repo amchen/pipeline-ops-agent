@@ -1,0 +1,7 @@
+version: 2
+
+models:
+  - name: fct_daily_revenue
+    columns:
+      - name: order_date
+        data_tests: [not_null]

@@ -1,0 +1,9 @@
+.venv/
+.env
+__pycache__/
+.pytest_cache/
+data/
+runs/
+pipeline/target/
+pipeline/logs/
+pipeline/dbt_packages/
